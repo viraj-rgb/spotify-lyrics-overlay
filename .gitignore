@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.spec
+build/
+dist/
+
+# Generated on first install
+app.ico

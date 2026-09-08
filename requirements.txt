@@ -1,0 +1,8 @@
+PyQt6>=6.6
+PyQt6-WebEngine>=6.6
+winsdk>=1.0.0b10
+requests>=2.31
+
+# Optional: only used by install.py to render app.ico for the shortcut.
+# Without it the shortcut uses the default Python icon; the app is unaffected.
+Pillow>=10.0

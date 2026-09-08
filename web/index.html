@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Lyric Overlay</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- The card is the drag surface. Anything interactive inside it opts out
+       via [data-no-drag] so buttons do not start a window drag. -->
+  <main id="card" class="card" data-state="idle">
+    <header class="meta">
+      <div class="meta__text">
+        <span id="title" class="meta__title">Lyric Overlay</span>
+        <span class="meta__sep" aria-hidden="true">·</span>
+        <span id="artist" class="meta__artist">waiting for Spotify</span>
+      </div>
+      <div class="meta__controls" data-no-drag>
+        <button id="close" class="ctl ctl--close" title="Close">×</button>
+      </div>
+    </header>
+
+    <section id="stage" class="stage">
+      <div id="lines" class="lines"></div>
+
+      <!-- Shown while waiting, during instrumental passages, and when a track
+           has no lyrics available. -->
+      <div id="pulse" class="pulse" aria-hidden="true">
+        <span></span><span></span><span></span>
+      </div>
+
+      <p id="notice" class="notice"></p>
+    </section>
+
+    <div class="progress" aria-hidden="true"><div id="progressFill" class="progress__fill"></div></div>
+
+    <div class="grip" aria-hidden="true"></div>
+  </main>
+
+  <script src="vendor/motion.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,414 @@
+/* Lyric overlay — visual layer.
+
+   Design constraints that shaped this:
+   - The card floats over an unknown backdrop (a bright IDE, a dark game, a
+     photo wallpaper). Contrast has to come from the card itself, not from
+     assumptions about what is behind it. Hence the near-opaque plate plus a
+     dark halo bleeding past its edge.
+   - `backdrop-filter` deliberately is not used. Inside QWebEngineView it can
+     only blur content within the page, and the page is otherwise empty, so it
+     would cost a compositor layer and blur nothing.
+   - Sung vs unsung is carried by weight and opacity, not hue. Colour-only
+     highlights disappear over a backdrop that happens to share the hue.
+*/
+
+@font-face {
+  font-family: 'Bricolage Grotesque';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: block;
+  src: url('vendor/bricolage-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+                 U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
+                 U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Bricolage Grotesque';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: block;
+  src: url('vendor/bricolage-latinext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+                 U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+                 U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* Album-art theme.
+   Registered with @property so the browser knows these are colours and can
+   interpolate them -- a plain custom property would snap between tracks instead
+   of crossfading. Both are written from JS when the track changes.
+
+   Only hue comes from the artwork. --plate-tint is always near-black and
+   --accent always bright, so a pale or garish cover cannot make the card
+   unreadable. */
+@property --plate-tint {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgb(12, 13, 18);
+}
+@property --accent {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgb(150, 158, 178);
+}
+
+:root {
+  --plate: 12, 13, 18;
+  --sung: 255, 255, 255;
+
+  /* Slow enough to read as a mood change rather than a flicker, and it lands
+     while the new track's first line is still animating in. */
+  transition: --plate-tint 900ms ease-out, --accent 900ms ease-out;
+
+  /* Plate opacity. The overlay sits above arbitrary content -- an IDE, a
+     browser, a bright wallpaper -- so the backdrop has to be suppressed hard
+     enough that it never competes with the lyric text. Lower these two values
+     for a glassier, more see-through card. */
+  --plate-core: 0.75;
+  --plate-edge: 0.64;
+
+  /* Every ink is fully opaque. Dimming is done with solid grey tones, never
+     with alpha, so only the plate is see-through -- transparent text would let
+     the backdrop show *through the glyphs* and fall apart over busy content. */
+  --ink-sung: rgb(var(--sung));
+  --ink-unsung: rgb(152, 155, 164);
+  --ink-adjacent: rgb(108, 111, 120);
+  --ink-meta: rgb(140, 143, 152);
+
+  /* Carries legibility when the plate alone is not enough to suppress a
+     bright or noisy backdrop. */
+  --text-halo:
+    0 1px 2px rgba(0, 0, 0, 0.55),
+    0 2px 12px rgba(0, 0, 0, 0.40);
+
+  --hairline: rgba(var(--sung), 0.10);
+  --radius: 20px;
+
+  --lyric-size: 30px;
+  --line-gap: 10px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  /* The window itself is the hit area; without this the desktop shows through
+     as a click target in the rounded corners. */
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+  font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------------------------------------------------------------- card --- */
+
+.card {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 22px 0;
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--hairline));
+  background:
+    /* A faint top sheen keeps the plate from reading as flat black. */
+    linear-gradient(180deg, rgba(var(--sung), 0.055) 0%, rgba(var(--sung), 0) 42%),
+    /* A wash of the album's colour, strongest at the top where no text sits.
+       Kept weak: it should be felt rather than noticed, and it must not lift
+       the plate's lightness where the lyrics are. */
+    linear-gradient(165deg,
+      color-mix(in srgb, var(--accent) 9%, transparent) 0%,
+      transparent 52%),
+    /* Denser through the middle, where the lyrics sit, and thinner at the
+       edges. This keeps the card reading as translucent glass while still
+       killing enough of the backdrop that whatever is behind it cannot compete
+       with the words. */
+    radial-gradient(120% 100% at 50% 50%,
+      color-mix(in srgb, var(--plate-tint) calc(var(--plate-core) * 100%), transparent) 0%,
+      color-mix(in srgb, var(--plate-tint) calc(var(--plate-core) * 100%), transparent) 45%,
+      color-mix(in srgb, var(--plate-tint) calc(var(--plate-edge) * 100%), transparent) 100%);
+  /* The aura and halo are box-shadows rather than a child element, because the
+     card must clip its own contents (see overflow below) and a child drawn
+     outside the card would be clipped away. Shadows paint outside the border
+     box and follow its radius, so they survive. */
+  box-shadow:
+    /* Album-coloured aura bleeding past the edge. */
+    0 0 44px -6px color-mix(in srgb, var(--accent) 40%, transparent),
+    0 6px 26px -8px color-mix(in srgb, var(--accent) 26%, transparent),
+    /* Dark halo, so the card separates from bright backdrops. */
+    0 24px 60px -12px rgba(0, 0, 0, 0.70),
+    0 2px 10px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(var(--sung), 0.07);
+  /* Clip children to the rounded shape. Without this, square-cornered children
+     at the card's edge (the progress bar in particular) poke out past the
+     radius and visibly square off the bottom corners. */
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(10px) scale(0.985);
+}
+
+/* ---------------------------------------------------------------- meta --- */
+
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex: 0 0 auto;
+  min-height: 15px;
+}
+
+.meta__text {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-meta);
+  text-shadow: var(--text-halo);
+}
+
+.meta__title,
+.meta__artist {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.meta__title { flex: 0 1 auto; color: rgba(var(--sung), 0.62); }
+.meta__artist { flex: 0 1 auto; font-weight: 400; }
+.meta__sep { flex: 0 0 auto; opacity: 0.5; }
+
+.meta__controls {
+  display: flex;
+  gap: 3px;
+  flex: 0 0 auto;
+  opacity: 0;
+  transition: opacity 160ms ease-out;
+}
+.card:hover .meta__controls { opacity: 1; }
+
+.ctl {
+  width: 19px;
+  height: 19px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(var(--sung), 0.45);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 130ms ease-out, color 130ms ease-out;
+}
+.ctl:hover { background: rgba(var(--sung), 0.10); color: rgba(var(--sung), 0.92); }
+.ctl--close:hover { background: rgba(255, 86, 86, 0.22); color: #ff9b9b; }
+
+/* --------------------------------------------------------------- stage --- */
+
+.stage {
+  position: relative;
+  flex: 1 1 auto;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  /* Feather the top and bottom so adjacent lines dissolve rather than clip. */
+  -webkit-mask-image: linear-gradient(180deg,
+    transparent 0%, #000 16%, #000 84%, transparent 100%);
+  mask-image: linear-gradient(180deg,
+    transparent 0%, #000 16%, #000 84%, transparent 100%);
+}
+
+.lines {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--line-gap);
+  align-items: center;
+  text-align: center;
+  will-change: transform;
+}
+
+/* ---------------------------------------------------------------- line --- */
+
+.line {
+  display: block;
+  max-width: 100%;
+  padding: 0 4px;
+  font-size: var(--lyric-size);
+  line-height: 1.16;
+  letter-spacing: -0.018em;
+  font-weight: 600;
+  color: var(--ink-adjacent);
+  text-wrap: balance;
+  text-shadow: var(--text-halo);
+  transition: color 260ms ease-out;
+}
+
+/* Only the immediate neighbours are shown. A third visible line on each side
+   crowds the active one instead of giving it context.
+
+   Neighbours are dimmed with a solid colour, not opacity, so their glyphs stay
+   fully opaque. Distant lines are hidden outright (opacity 0) -- they still
+   occupy their box, because offsetTop drives the scroll maths. */
+.line[data-role='near'] { font-weight: 500; color: var(--ink-adjacent); }
+.line[data-role='far']  { font-weight: 500; opacity: 0; }
+
+.line[data-role='far'] { transition: opacity 300ms ease-out; }
+
+.line[data-role='active'] { color: var(--ink-unsung); }
+
+/* ---------------------------------------------------------------- word --- */
+
+.word {
+  position: relative;
+  display: inline-block;
+  white-space: pre;
+  /* The glyph fill comes entirely from the gradient. `color` must be
+     transparent: with background-clip:text the background paints *behind* the
+     text, so any opaque colour here would hide the sweep. */
+  color: transparent;
+  /* --p is the sweep position for this word, 0 → 1, written every frame from
+     JS. Both stops sit at --p, making a hard edge that travels through the
+     glyphs — so the highlight advances mid-word, not word-to-word. */
+  background-image: linear-gradient(
+    90deg,
+    var(--ink-sung) calc(var(--p, 0) * 100%),
+    var(--ink-unsung) calc(var(--p, 0) * 100%)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  /* Weight lifts as the word is sung — a cue that survives any backdrop,
+     including one that happens to be white. */
+  font-variation-settings: 'wght' calc(560 + var(--p, 0) * 200);
+}
+
+/* Only the word currently being sung gets a glow, so the line does not smear. */
+.word[data-live='1'] {
+  /* Keeps the dark halo underneath so the glow adds to legibility on a
+     transparent card rather than replacing it. */
+  text-shadow:
+    var(--text-halo),
+    0 0 18px rgba(var(--sung), 0.30),
+    0 0 34px color-mix(in srgb, var(--accent) 55%, transparent),
+    0 0 62px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* Unsynced lyrics: no per-word timing, so the whole line simply reads bright. */
+.line[data-role='active'][data-unsynced='1'] { color: var(--ink-sung); font-weight: 700; }
+
+/* --------------------------------------------------------------- pulse --- */
+
+.pulse {
+  position: absolute;
+  display: none;
+  gap: 7px;
+  align-items: center;
+}
+.pulse span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(var(--sung), 0.30);
+  animation: breathe 1500ms ease-in-out infinite;
+}
+.pulse span:nth-child(2) { animation-delay: 190ms; }
+.pulse span:nth-child(3) { animation-delay: 380ms; }
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.22; transform: scale(0.82); }
+  50%      { opacity: 0.85; transform: scale(1.18); }
+}
+
+.card[data-state='idle'] .pulse,
+.card[data-state='instrumental'] .pulse { display: flex; }
+.card[data-state='idle'] .lines,
+.card[data-state='instrumental'] .lines { opacity: 0; }
+
+/* -------------------------------------------------------------- notice --- */
+
+.notice {
+  position: absolute;
+  bottom: 4px;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: rgba(var(--sung), 0.34);
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+}
+.card[data-state='nolyrics'] .notice { opacity: 1; }
+.card[data-state='nolyrics'] .pulse { display: none; }
+
+/* ------------------------------------------------------------ progress --- */
+
+.progress {
+  flex: 0 0 auto;
+  height: 3px;
+  /* Sits inside the card's horizontal padding and clear of the bottom edge, so
+     it never meets the rounded corners. Full-bleed reads as a bar that has
+     escaped the card; inset reads as part of it. */
+  margin: 0 0 10px;
+  border-radius: 999px;
+  background: rgba(var(--sung), 0.10);
+  overflow: hidden;
+}
+.progress__fill {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--accent) 55%, transparent),
+    var(--accent));
+  transform-origin: left center;
+}
+
+/* -------------------------------------------------------------- resize --- */
+
+/* The window is frameless, so it has no OS resize border. The card's outer few
+   pixels act as one instead: JS works out which edge the pointer is near and
+   sets the cursor, and Python resizes the real window from there. */
+.card[data-resizing='1'] { cursor: inherit; }
+
+/* A subtle corner grip, so the affordance is discoverable rather than a hidden
+   hot zone. Fades in with the rest of the controls on hover. */
+.grip {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 13px;
+  height: 13px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease-out;
+}
+.card:hover .grip { opacity: 0.55; }
+
+.grip::before,
+.grip::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  background: rgb(var(--sung));
+  border-radius: 1px;
+}
+.grip::before { bottom: 0; width: 11px; height: 1.5px; }
+.grip::after  { bottom: 0; width: 1.5px; height: 11px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse span { animation: none; opacity: 0.5; }
+  .line, .ctl, .meta__controls { transition: none; }
+}
