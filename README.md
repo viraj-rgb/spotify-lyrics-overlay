@@ -5,9 +5,11 @@
 ![Spotify lyrics overlay on Windows showing word-by-word synced lyrics in a transparent floating window](docs/overlay.png)
 
 <p align="center">
-  <a href="https://github.com/viraj-rgb/spotify-lyrics-overlay/releases/latest">
-    <b>⬇ Download for Windows</b>
+  <a href="https://github.com/viraj-rgb/spotify-lyrics-overlay/releases/latest/download/SpotifyLyricsOverlay-Setup.exe">
+    <b>⬇ Download for Windows — one click, no setup</b>
   </a>
+  <br>
+  <sub>Free · no account · no API key · Windows 10/11</sub>
 </p>
 
 ---
