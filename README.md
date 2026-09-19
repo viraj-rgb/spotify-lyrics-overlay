@@ -23,15 +23,34 @@
 
 ## Download
 
-**[⬇ Get the latest release](https://github.com/viraj-rgb/spotify-lyrics-overlay/releases/latest)**
+<p align="center">
+  <a href="https://github.com/viraj-rgb/spotify-lyrics-overlay/releases/latest/download/SpotifyLyricsOverlay-Setup.exe">
+    <b>⬇ Download for Windows (installer, ~155 MB)</b>
+  </a>
+</p>
 
-1. Download the `.zip` from the Releases page.
-2. Unzip it anywhere.
-3. Run `SpotifyLyricsOverlay.exe`.
+**Download it, double-click it, done.** The installer puts the app in place and
+adds Desktop and Start Menu shortcuts. No Python, no unzipping, no admin
+password — it installs just for you.
 
-No installer, no Python needed, nothing to configure. Start Spotify and play something.
+Then start Spotify and play something.
 
-> Windows SmartScreen may warn about an unrecognised app, because the build is not code-signed (a signing certificate costs money). Click **More info → Run anyway**, or [run it from source](#run-from-source) instead if you would rather not.
+> Windows SmartScreen will likely warn about an unrecognised app, because the
+> build is not code-signed (a certificate is an ongoing paid expense). Click
+> **More info → Run anyway**. The source is all here if you would rather
+> [build it yourself](#run-from-source).
+
+**Prefer not to install anything?** The same release has
+`SpotifyLyricsOverlay-win64.zip` — a portable build. Unzip it anywhere and run
+`SpotifyLyricsOverlay.exe`. Nothing is written outside the folder except your
+settings.
+
+### Uninstalling
+
+Settings → Apps → **Spotify Lyrics Overlay** → Uninstall, or use the Start Menu
+shortcut. Your preferences live in `%USERPROFILE%\.lyric-overlay` and are left
+behind on purpose, so reinstalling keeps your layout; delete that folder to
+remove them too.
 
 ## Album colours
 
@@ -100,6 +119,25 @@ python install.py
 `install.py` puts a shortcut on your Desktop and in the Start Menu. Or just run `python launch.py`.
 
 `python install.py --uninstall` removes the shortcuts.
+
+### Building the distributables
+
+```bat
+pip install pyinstaller
+pyinstaller --noconfirm --windowed --name SpotifyLyricsOverlay ^
+  --icon app.ico --add-data "web;web" --collect-all winsdk launch.py
+```
+
+That produces the portable build in `dist\SpotifyLyricsOverlay`. To wrap it in
+the installer, install [Inno Setup](https://jrsoftware.org/isinfo.php) and run:
+
+```bat
+"%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" installer.iss
+```
+
+The setup executable lands in `installer_output`. Do not pass
+`--collect-all PyQt6` to PyInstaller: it pulls in conflicting copies of the Qt
+libraries and the build fails without a clear error.
 
 ## How it works
 

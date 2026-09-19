@@ -6,3 +6,6 @@ dist/
 
 # Generated on first install
 app.ico
+
+# Installer build output
+installer_output/
